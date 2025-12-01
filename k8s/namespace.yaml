@@ -1,0 +1,47 @@
+---
+# Namespace for all semantic recommendation system components
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: semantic-recsys
+  labels:
+    name: semantic-recsys
+    environment: production
+
+---
+# Resource Quota
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: semantic-recsys-quota
+  namespace: semantic-recsys
+spec:
+  hard:
+    requests.cpu: "20"
+    requests.memory: 40Gi
+    limits.cpu: "40"
+    limits.memory: 80Gi
+    persistentvolumeclaims: "5"
+
+---
+# Limit Range
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: semantic-recsys-limits
+  namespace: semantic-recsys
+spec:
+  limits:
+  - max:
+      cpu: "4"
+      memory: 8Gi
+    min:
+      cpu: "100m"
+      memory: 128Mi
+    default:
+      cpu: "1"
+      memory: 2Gi
+    defaultRequest:
+      cpu: "500m"
+      memory: 1Gi
+    type: Container
