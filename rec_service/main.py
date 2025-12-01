@@ -33,20 +33,22 @@ class LoggerAdapter(logging.LoggerAdapter):
         return msg, {**kwargs, 'extra': {'correlation_id': self.extra.get('correlation_id', 'N/A')}}
 
 
+# --- HELPER: Ensure Initialization ---
+async def ensure_initialized():
+    """Lazy load resources if lifespan didn't run"""
+    global retrieval_engine
+    if retrieval_engine is None:
+        logger.info("Lazy initializing resources...")
+        retrieval_engine = RetrievalEngine()
+        await retrieval_engine.initialize()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup and shutdown events"""
-    global retrieval_engine
-    
-    # Startup
-    logger.info("Initializing Recommendation Service...")
-    retrieval_engine = RetrievalEngine()
-    await retrieval_engine.initialize()
+    await ensure_initialized()
     logger.info("Service ready")
-    
     yield
-    
-    # Shutdown
     logger.info("Shutting down...")
 
 
@@ -76,15 +78,6 @@ class RecommendationRequest(BaseModel):
     query: str = Field(..., description="Search query or product description")
     top_k: int = Field(5, ge=1, le=50, description="Number of recommendations")
     filters: Optional[dict] = Field(None, description="Optional filters (e.g., category, price range)")
-    
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "query": "wireless bluetooth headphones with noise cancellation",
-                "top_k": 5,
-                "filters": {"category": "Electronics"}
-            }
-        }
 
 
 class ProductRecommendation(BaseModel):
@@ -159,11 +152,12 @@ async def health_check(
     log: LoggerAdapter = Depends(get_logger)
 ):
     """Health check endpoint for K8s liveness probe"""
+    await ensure_initialized()
     log.info("Health check requested")
     return {
         "status": "healthy",
         "service": "recommendation",
-        "index_size": retrieval_engine.get_index_size()
+        "index_size": retrieval_engine.get_index_size() if retrieval_engine else 0
     }
 
 
@@ -172,6 +166,7 @@ async def readiness_check(
     log: LoggerAdapter = Depends(get_logger)
 ):
     """Readiness probe - checks if retrieval engine is ready"""
+    await ensure_initialized()
     if not retrieval_engine or not retrieval_engine.is_ready():
         log.warning("Service not ready")
         raise HTTPException(status_code=503, detail="Service not ready")
@@ -186,11 +181,8 @@ async def get_recommendations(
     req: Request,
     log: LoggerAdapter = Depends(get_logger)
 ):
-    """
-    Get product recommendations based on semantic search
-    
-    Returns top-k most similar products to the query
-    """
+    """Get product recommendations based on semantic search"""
+    await ensure_initialized()
     correlation_id = get_correlation_id(req)
     log.info(f"Recommendation request: query='{request.query}', top_k={request.top_k}")
     
@@ -209,8 +201,6 @@ async def get_recommendations(
         recommendations = [
             ProductRecommendation(**result) for result in results
         ]
-        
-        log.info(f"Returning {len(recommendations)} recommendations")
         
         return RecommendationResponse(
             recommendations=recommendations,
@@ -237,6 +227,7 @@ async def get_similar_products(
     log: LoggerAdapter = Depends(get_logger)
 ):
     """Get similar products based on a product ID"""
+    await ensure_initialized()
     correlation_id = get_correlation_id(req)
     log.info(f"Similar products request for: {product_id}")
     
@@ -269,9 +260,12 @@ async def get_stats(
     log: LoggerAdapter = Depends(get_logger)
 ):
     """Get retrieval engine statistics"""
+    await ensure_initialized()
     log.info("Stats requested")
-    stats = retrieval_engine.get_stats()
-    return stats
+    if retrieval_engine:
+        stats = retrieval_engine.get_stats()
+        return stats
+    return {"status": "not_ready"}
 
 
 if __name__ == "__main__":
