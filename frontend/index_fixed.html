@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Semantic Product Search</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @keyframes shimmer {
+            0% { background-position: -1000px 0; }
+            100% { background-position: 1000px 0; }
+        }
+        .skeleton {
+            animation: shimmer 2s infinite linear;
+            background: linear-gradient(to right, #f0f0f0 4%, #e0e0e0 25%, #f0f0f0 36%);
+            background-size: 1000px 100%;
+        }
+    </style>
+    <script>
+        // Debug: Log when scripts load
+        console.log('Page loaded');
+        window.addEventListener('DOMContentLoaded', () => {
+            console.log('DOM ready');
+            console.log('Alpine loaded:', typeof Alpine !== 'undefined');
+        });
+    </script>
+</head>
+<body class="bg-gradient-to-br from-blue-50 via-white to-purple-50 min-h-screen">
+    
+    <!-- Debug Info Banner -->
+    <div class="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4" role="alert">
+        <p class="font-bold">Debug Mode</p>
+        <p class="text-sm">If you see this banner, the page is loading. Check console (F12) for errors.</p>
+    </div>
+
+    <div x-data="searchApp()" x-init="init()" class="container mx-auto px-4 py-8">
+        
+        <!-- Header -->
+        <header class="mb-8 text-center">
+            <h1 class="text-4xl font-bold text-gray-800 mb-2">
+                <i class="fas fa-brain mr-2"></i>Semantic Product Search
+            </h1>
+            <p class="text-gray-600">AI-powered recommendations</p>
+            
+            <!-- Connection Status -->
+            <div class="mt-4 flex justify-center gap-2">
+                <span x-show="connectionStatus === 'connected'" class="px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm">
+                    <i class="fas fa-check-circle mr-1"></i>Connected
+                </span>
+                <span x-show="connectionStatus === 'connecting'" class="px-3 py-1 bg-yellow-100 text-yellow-700 rounded-full text-sm">
+                    <i class="fas fa-spinner fa-spin mr-1"></i>Connecting...
+                </span>
+                <span x-show="connectionStatus === 'error'" class="px-3 py-1 bg-red-100 text-red-700 rounded-full text-sm">
+                    <i class="fas fa-exclamation-circle mr-1"></i>Connection Error
+                </span>
+            </div>
+            
+            <!-- Debug Info -->
+            <div x-show="debugMode" class="mt-4 text-left bg-gray-100 p-4 rounded-lg text-xs font-mono">
+                <div><strong>API URL:</strong> <span x-text="apiBaseUrl"></span></div>
+                <div><strong>Stats:</strong> <span x-text="JSON.stringify(stats)"></span></div>
+                <div><strong>Last Error:</strong> <span x-text="error || 'None'"></span></div>
+            </div>
+            <button @click="debugMode = !debugMode" class="mt-2 text-xs text-gray-500 hover:text-gray-700">
+                Toggle Debug Info
+            </button>
+        </header>
+
+        <!-- Search Bar -->
+        <div class="max-w-3xl mx-auto mb-8">
+            <div class="bg-white rounded-lg shadow-lg p-6">
+                <form @submit.prevent="search()">
+                    <div class="relative mb-4">
+                        <input 
+                            type="text" 
+                            x-model="query"
+                            placeholder="Search for products..."
+                            class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
+                        >
+                        <button 
+                            type="submit"
+                            :disabled="loading"
+                            class="absolute right-2 top-2 px-4 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+                        >
+                            <span x-show="!loading">Search</span>
+                            <span x-show="loading">Loading...</span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Test Connection Button -->
+        <div class="text-center mb-8">
+            <button 
+                @click="testConnection()"
+                class="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
+            >
+                <i class="fas fa-network-wired mr-2"></i>Test API Connection
+            </button>
+        </div>
+
+        <!-- Results -->
+        <div x-show="results.length > 0" class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <template x-for="product in results" :key="product.product_id">
+                <div class="bg-white rounded-lg shadow-lg p-6">
+                    <h3 class="text-lg font-bold mb-2" x-text="product.title"></h3>
+                    <p class="text-gray-600 text-sm mb-2" x-text="product.description"></p>
+                    <div class="flex justify-between items-center">
+                        <span class="text-xl font-bold text-blue-600">$<span x-text="product.price"></span></span>
+                        <span class="text-sm text-gray-500" x-text="product.category"></span>
+                    </div>
+                </div>
+            </template>
+        </div>
+
+        <!-- No Results -->
+        <div x-show="!loading && results.length === 0 && query" class="text-center py-16">
+            <i class="fas fa-search text-4xl text-gray-300 mb-4"></i>
+            <p class="text-gray-600">No results found</p>
+        </div>
+
+        <!-- Error Display -->
+        <div x-show="error" class="fixed bottom-4 right-4 bg-red-500 text-white p-4 rounded-lg shadow-lg max-w-md">
+            <div class="flex items-start gap-3">
+                <i class="fas fa-exclamation-circle text-xl"></i>
+                <div>
+                    <h4 class="font-bold">Error</h4>
+                    <p class="text-sm" x-text="error"></p>
+                    <button @click="error = null" class="mt-2 text-xs underline">Dismiss</button>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        function searchApp() {
+            return {
+                query: '',
+                topK: 10,
+                results: [],
+                loading: false,
+                error: null,
+                stats: {},
+                connectionStatus: 'connecting',
+                debugMode: false,
+                
+                // Try multiple API URLs
+                apiUrls: [
+                    'http://localhost:8080',      // Nginx
+                    'http://localhost:8002',      // Direct rec service
+                    'http://127.0.0.1:8080',      // Alternative localhost
+                    'http://127.0.0.1:8002'       // Alternative direct
+                ],
+                apiBaseUrl: '',
+                
+                async init() {
+                    console.log('Initializing search app...');
+                    await this.findWorkingAPI();
+                },
+                
+                async findWorkingAPI() {
+                    console.log('Testing API connections...');
+                    this.connectionStatus = 'connecting';
+                    
+                    for (const url of this.apiUrls) {
+                        try {
+                            console.log(`Testing ${url}...`);
+                            const response = await fetch(`${url}/health`, {
+                                method: 'GET',
+                                headers: { 'Content-Type': 'application/json' }
+                            });
+                            
+                            if (response.ok) {
+                                console.log(`✓ Connected to ${url}`);
+                                this.apiBaseUrl = url;
+                                this.connectionStatus = 'connected';
+                                await this.loadStats();
+                                return;
+                            }
+                        } catch (err) {
+                            console.log(`✗ Failed to connect to ${url}:`, err.message);
+                        }
+                    }
+                    
+                    // No API found
+                    console.error('Could not connect to any API endpoint');
+                    this.connectionStatus = 'error';
+                    this.error = 'Could not connect to API. Please ensure services are running:\n' +
+                                'docker-compose -f docker-compose.prod.yml up -d';
+                },
+                
+                async testConnection() {
+                    console.log('Manual connection test...');
+                    this.error = null;
+                    await this.findWorkingAPI();
+                    
+                    if (this.connectionStatus === 'connected') {
+                        alert(`Connected successfully to ${this.apiBaseUrl}`);
+                    } else {
+                        alert('Connection failed. Check console (F12) for details.');
+                    }
+                },
+                
+                async loadStats() {
+                    try {
+                        const response = await fetch(`${this.apiBaseUrl}/stats`);
+                        if (response.ok) {
+                            this.stats = await response.json();
+                            console.log('Stats loaded:', this.stats);
+                        }
+                    } catch (err) {
+                        console.error('Failed to load stats:', err);
+                    }
+                },
+                
+                async search() {
+                    if (!this.query.trim()) {
+                        this.results = [];
+                        return;
+                    }
+                    
+                    if (!this.apiBaseUrl) {
+                        this.error = 'API not connected. Click "Test API Connection" button.';
+                        return;
+                    }
+                    
+                    this.loading = true;
+                    this.error = null;
+                    
+                    console.log(`Searching for: ${this.query}`);
+                    
+                    try {
+                        const response = await fetch(`${this.apiBaseUrl}/recommend`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({
+                                query: this.query,
+                                top_k: this.topK
+                            })
+                        });
+                        
+                        if (!response.ok) {
+                            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                        }
+                        
+                        const data = await response.json();
+                        this.results = data.recommendations || [];
+                        console.log(`Found ${this.results.length} results`);
+                        
+                    } catch (err) {
+                        console.error('Search failed:', err);
+                        this.error = `Search failed: ${err.message}`;
+                        this.results = [];
+                    } finally {
+                        this.loading = false;
+                    }
+                }
+            }
+        }
+        
+        // Global error handler
+        window.addEventListener('error', (e) => {
+            console.error('Global error:', e.error);
+        });
+        
+        console.log('Script loaded successfully');
+    </script>
+</body>
+</html>

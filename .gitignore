@@ -1,1 +1,47 @@
-$null  
+# ✅ Ignore Python environments and installed packages
+venv/
+.env
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Ignore Poetry / PIP dependency local caches
+pip/
+site-packages/
+semantic-recsys/ingest_service/site-packages/
+semantic-recsys/rec_service/site-packages/
+
+# ML / HuggingFace model cache (Sentence Transformers uses this)
+.huggingface/
+cache/
+models/
+transformers_cache/
+sentence-transformers/
+*.bin
+*.faiss
+*.index
+
+# ✅ Ignore Docker generated stuff (volumes, container logs, local builds)
+*.log
+faiss-data/
+data/
+docker-volumes/
+volumes/
+*.volume
+docker-compose.prod.yml  # Ignore if it's sensitive
+docker-compose.override.yml
+
+# Kafka / Zookeeper data inside containers (just in case)
+kafka-data/
+zookeeper-data/
+logs/
+kafka-logs/
+
+# OS junk
+.DS_Store
+Thumbs.db
+desktop.ini

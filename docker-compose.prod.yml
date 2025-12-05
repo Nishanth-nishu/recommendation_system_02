@@ -1,7 +1,29 @@
 version: '3.8'
 
 services:
-  # Redis for queue management
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: postgres
+    environment:
+      POSTGRES_DB: semantic_recsys
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_INITDB_ARGS: "-E UTF8"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - semantic-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Redis for queue management and caching
   redis:
     image: redis:7.2-alpine
     container_name: redis
@@ -17,6 +39,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
 
   # Zookeeper for Kafka
   zookeeper:
@@ -148,6 +171,7 @@ services:
       - "8080:80"
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      
     depends_on:
       - rec-service
     networks:
@@ -195,6 +219,8 @@ services:
 
 volumes:
   faiss-data:
+    driver: local
+  postgres-data:
     driver: local
   redis-data:
     driver: local

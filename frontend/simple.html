@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Product Search - Simple Version</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .header {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            margin-bottom: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            text-align: center;
+        }
+        h1 { color: #333; margin-bottom: 10px; }
+        .status {
+            display: inline-block;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 14px;
+            margin-top: 10px;
+        }
+        .status.connected { background: #d4edda; color: #155724; }
+        .status.error { background: #f8d7da; color: #721c24; }
+        .search-box {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 30px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+        input[type="text"] {
+            width: 100%;
+            padding: 15px;
+            font-size: 16px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            margin-bottom: 10px;
+        }
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-size: 16px;
+            border-radius: 5px;
+            cursor: pointer;
+            width: 100%;
+        }
+        button:hover { background: #5568d3; }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .results {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 20px;
+        }
+        .product {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+        .product h3 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 18px;
+        }
+        .product p {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 15px;
+            line-height: 1.5;
+        }
+        .product-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .price {
+            font-size: 24px;
+            font-weight: bold;
+            color: #667eea;
+        }
+        .category {
+            background: #e3f2fd;
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-size: 12px;
+            color: #1976d2;
+        }
+        .error-box {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: white;
+            font-size: 18px;
+        }
+        .debug {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            margin-top: 20px;
+            font-family: monospace;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🧠 Semantic Product Search</h1>
+            <p>AI-powered product recommendations</p>
+            <span id="status" class="status">Checking connection...</span>
+            <div class="debug" id="debugInfo" style="display:none;"></div>
+            <button onclick="toggleDebug()" style="margin-top:10px; width:auto; padding:5px 15px;">Toggle Debug</button>
+        </div>
+
+        <div class="search-box">
+            <input 
+                type="text" 
+                id="searchInput" 
+                placeholder="Search for products (e.g., wireless headphones)..."
+                onkeypress="if(event.key==='Enter') search()"
+            >
+            <button onclick="search()" id="searchBtn">Search</button>
+        </div>
+
+        <div id="error" style="display:none;" class="error-box"></div>
+        <div id="loading" style="display:none;" class="loading">Searching...</div>
+        <div id="results" class="results"></div>
+    </div>
+
+    <script>
+        const API_URLS = [
+            'http://localhost:8080',
+            'http://localhost:8002',
+            'http://127.0.0.1:8080',
+            'http://127.0.0.1:8002'
+        ];
+        
+        let apiUrl = '';
+        let debugMode = false;
+
+        // Initialize
+        window.onload = async () => {
+            console.log('Initializing...');
+            await findWorkingAPI();
+        };
+
+        async function findWorkingAPI() {
+            const statusEl = document.getElementById('status');
+            statusEl.textContent = 'Connecting...';
+            statusEl.className = 'status';
+
+            for (const url of API_URLS) {
+                try {
+                    console.log(`Testing ${url}...`);
+                    const response = await fetch(`${url}/health`, {
+                        method: 'GET',
+                        headers: { 'Content-Type': 'application/json' }
+                    });
+
+                    if (response.ok) {
+                        apiUrl = url;
+                        statusEl.textContent = `✓ Connected to ${url}`;
+                        statusEl.className = 'status connected';
+                        updateDebug(`Connected to: ${url}`);
+                        console.log(`✓ Connected to ${url}`);
+                        return true;
+                    }
+                } catch (err) {
+                    console.log(`✗ ${url} failed:`, err.message);
+                }
+            }
+
+            // Connection failed
+            statusEl.textContent = '✗ Cannot connect to API';
+            statusEl.className = 'status error';
+            showError('Cannot connect to API. Please ensure services are running:\ndocker-compose -f docker-compose.prod.yml up -d');
+            updateDebug('Failed to connect to any API endpoint');
+            return false;
+        }
+
+        async function search() {
+            const query = document.getElementById('searchInput').value.trim();
+            
+            if (!query) {
+                showError('Please enter a search query');
+                return;
+            }
+
+            if (!apiUrl) {
+                showError('API not connected. Trying to reconnect...');
+                await findWorkingAPI();
+                if (!apiUrl) return;
+            }
+
+            hideError();
+            showLoading();
+            
+            const resultsEl = document.getElementById('results');
+            resultsEl.innerHTML = '';
+
+            try {
+                console.log(`Searching for: ${query}`);
+                updateDebug(`Searching: ${query} at ${apiUrl}`);
+
+                const response = await fetch(`${apiUrl}/recommend`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        query: query,
+                        top_k: 12
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+                updateDebug(`Found ${data.recommendations.length} results`);
+                displayResults(data.recommendations);
+
+            } catch (err) {
+                console.error('Search failed:', err);
+                showError(`Search failed: ${err.message}`);
+                updateDebug(`Error: ${err.message}`);
+            } finally {
+                hideLoading();
+            }
+        }
+
+        function displayResults(products) {
+            const resultsEl = document.getElementById('results');
+            
+            if (!products || products.length === 0) {
+                resultsEl.innerHTML = '<div style="text-align:center;color:white;padding:40px;">No results found</div>';
+                return;
+            }
+
+            resultsEl.innerHTML = products.map(p => `
+                <div class="product">
+                    <h3>${escapeHtml(p.title)}</h3>
+                    <p>${escapeHtml(p.description)}</p>
+                    <div class="product-footer">
+                        <span class="price">$${p.price ? p.price.toFixed(2) : 'N/A'}</span>
+                        <span class="category">${escapeHtml(p.category || 'General')}</span>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function showError(message) {
+            const errorEl = document.getElementById('error');
+            errorEl.textContent = message;
+            errorEl.style.display = 'block';
+        }
+
+        function hideError() {
+            document.getElementById('error').style.display = 'none';
+        }
+
+        function showLoading() {
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('searchBtn').disabled = true;
+        }
+
+        function hideLoading() {
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('searchBtn').disabled = false;
+        }
+
+        function toggleDebug() {
+            debugMode = !debugMode;
+            const debugEl = document.getElementById('debugInfo');
+            debugEl.style.display = debugMode ? 'block' : 'none';
+        }
+
+        function updateDebug(message) {
+            const debugEl = document.getElementById('debugInfo');
+            const timestamp = new Date().toLocaleTimeString();
+            debugEl.innerHTML = `[${timestamp}] ${message}<br>` + debugEl.innerHTML;
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Test buttons
+        console.log('Page loaded. Testing connection...');
+    </script>
+</body>
+</html>
